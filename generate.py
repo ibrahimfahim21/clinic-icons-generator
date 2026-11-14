@@ -46,7 +46,7 @@ def gemini(prompt, key):
 def cloudflare(prompt, seed, acc, tok):
     model = os.environ.get('CF_MODEL', '@cf/black-forest-labs/flux-1-schnell')
     url = f'https://api.cloudflare.com/client/v4/accounts/{acc}/ai/run/{model}'
-    body = json.dumps({'prompt': prompt, 'steps': 8, 'seed': seed}).encode()
+    body = json.dumps({'prompt': prompt + ('' if seed == 7 else f' (variation {seed})'), 'steps': 8}).encode()
     res = json.loads(http(url, body, {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok}))
     img = (res.get('result') or {}).get('image')
     if not img:
