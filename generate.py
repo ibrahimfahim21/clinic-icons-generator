@@ -108,6 +108,8 @@ def main():
                         raw, how = cloudflare(prompt, seed + attempt, cf_acc, cf_tok), 'cloudflare'
                     except Exception as e:
                         print(f'  cloudflare failed for {name}: {e}', flush=True)
+                        if getattr(e, 'code', 0) in (401, 403):
+                            sys.exit('Cloudflare رفض المفتاح (401/403): اتأكد إن CF_API_TOKEN هو التوكن كامل (مش المختصر) وإن CF_ACCOUNT_ID صح')
                 if raw is None:
                     if not allow_free:
                         raise RuntimeError('no image provider worked')
