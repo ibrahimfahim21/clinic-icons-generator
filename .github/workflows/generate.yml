@@ -1,0 +1,59 @@
+name: Generate icons
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'أسماء معينة بس (مفصولة بفاصلة) - فاضي = كل الناقص'
+        required: false
+        default: ''
+      redo:
+        description: 'إعادة رسم كل الأيقونات حتى الموجودة'
+        type: boolean
+        default: false
+      seed:
+        description: 'رقم عشوائي (غيّره لو عايز شكل مختلف)'
+        required: false
+        default: '7'
+  push:
+    paths:
+      - subjects.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: icons
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pillow
+      - name: Generate
+        env:
+          ONLY: ${{ github.event.inputs.only }}
+          REDO: ${{ github.event.inputs.redo }}
+          SEED: ${{ github.event.inputs.seed }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+        run: python generate.py
+      - name: Save the icons in the repository
+        run: |
+          git config user.name "icons-bot"
+          git config user.email "icons-bot@users.noreply.github.com"
+          git add icons preview.jpg
+          git diff --cached --quiet || git commit -m "Generate icons"
+          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clinic-icons
+          path: |
+            icons/*.jpg
+            preview.jpg
