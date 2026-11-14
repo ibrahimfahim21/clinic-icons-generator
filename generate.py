@@ -6,7 +6,7 @@
 - من غير أي مفتاح: Pollinations (جودة أقل وعليها علامة مائية) — POLLINATIONS_TOKEN بيحسّنها.
 تصميم وتطوير: المهندس إبراهيم فهيم
 """
-import base64, io, json, os, sys, time, urllib.parse, urllib.request
+import base64, io, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 from PIL import Image, ImageOps, ImageChops
 
 STYLE = ("Icon of {subject}. Photorealistic glossy 3D product render of a single object, soft studio lighting, "
@@ -19,8 +19,15 @@ SIZE = 512
 
 def http(url, data=None, headers=None, timeout=180):
     req = urllib.request.Request(url, data=data, headers={'User-Agent': 'clinic-icons/1.0', **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        try:
+            e.msg = f'{e.msg} - {e.read()[:400].decode("utf-8", "replace")}'
+        except Exception:
+            pass
+        raise
 
 
 def gemini(prompt, key):
@@ -108,8 +115,8 @@ def main():
                         raw, how = cloudflare(prompt, seed + attempt, cf_acc, cf_tok), 'cloudflare'
                     except Exception as e:
                         print(f'  cloudflare failed for {name}: {e}', flush=True)
-                        if getattr(e, 'code', 0) in (401, 403):
-                            sys.exit('Cloudflare رفض المفتاح (401/403): اتأكد إن CF_API_TOKEN هو التوكن كامل (مش المختصر) وإن CF_ACCOUNT_ID صح')
+                        if getattr(e, 'code', 0) in (400, 401, 403) and not done:
+                            sys.exit(f'Cloudflare رفض الطلب: {e}')
                 if raw is None:
                     if not allow_free:
                         raise RuntimeError('no image provider worked')
