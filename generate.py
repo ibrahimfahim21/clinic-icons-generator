@@ -1,7 +1,9 @@
 """
 يولّد أيقونات 3D واقعية (زي فولدر B) لكل اسم في subjects.json ويحفظها في icons/<name>.jpg
 - مجاني من غير أي مفتاح: Pollinations (موديل Flux).
-- لو حطيت GEMINI_API_KEY في Secrets بتاعة المستودع: بيستخدم Gemini (Nano Banana) الأول.
+- الأحسن والمجاني: Cloudflare Workers AI (موديل FLUX) — حط CF_ACCOUNT_ID و CF_API_TOKEN في Secrets.
+- لو حطيت GEMINI_API_KEY في Secrets: بيستخدم Gemini (Nano Banana) الأول.
+- من غير أي مفتاح: Pollinations (جودة أقل وعليها علامة مائية) — POLLINATIONS_TOKEN بيحسّنها.
 تصميم وتطوير: المهندس إبراهيم فهيم
 """
 import base64, io, json, os, sys, time, urllib.parse, urllib.request
@@ -32,6 +34,17 @@ def gemini(prompt, key):
         if d and d.get('data'):
             return base64.b64decode(d['data'])
     raise RuntimeError('Gemini returned no image')
+
+
+def cloudflare(prompt, seed, acc, tok):
+    model = os.environ.get('CF_MODEL', '@cf/black-forest-labs/flux-1-schnell')
+    url = f'https://api.cloudflare.com/client/v4/accounts/{acc}/ai/run/{model}'
+    body = json.dumps({'prompt': prompt, 'steps': 8, 'seed': seed}).encode()
+    res = json.loads(http(url, body, {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok}))
+    img = (res.get('result') or {}).get('image')
+    if not img:
+        raise RuntimeError('Cloudflare returned no image: ' + json.dumps(res)[:300])
+    return base64.b64decode(img)
 
 
 def pollinations(prompt, seed):
@@ -66,6 +79,13 @@ def main():
     redo = os.environ.get('REDO', 'false').lower() == 'true'
     seed = int(os.environ.get('SEED', '7') or 7)
     key = os.environ.get('GEMINI_API_KEY', '').strip()
+    cf_acc = os.environ.get('CF_ACCOUNT_ID', '').strip()
+    cf_tok = os.environ.get('CF_API_TOKEN', '').strip()
+    # Pollinations المجاني جودته ضعيفة وعليه علامة مائية: بس لو طلبته بنفسك (ALLOW_FREE)
+    allow_free = os.environ.get('ALLOW_FREE', '') == 'true'
+    if not (key or (cf_acc and cf_tok) or allow_free):
+        sys.exit('مفيش مفتاح رسم: حط CF_ACCOUNT_ID و CF_API_TOKEN (أو GEMINI_API_KEY) في Settings > Secrets and variables > Actions')
+    print('providers:', ', '.join(x for x, ok in [('gemini', key), ('cloudflare', cf_acc and cf_tok), ('pollinations', allow_free)] if ok), flush=True)
     os.makedirs(OUT, exist_ok=True)
     done, failed = [], []
     for name, subject in subjects.items():
@@ -76,27 +96,34 @@ def main():
             continue
         prompt = STYLE.format(subject=subject)
         raw, how = None, ''
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 if key:
                     try:
                         raw, how = gemini(prompt, key), 'gemini'
                     except Exception as e:
                         print(f'  gemini failed for {name}: {e}', flush=True)
+                if raw is None and cf_acc and cf_tok:
+                    try:
+                        raw, how = cloudflare(prompt, seed + attempt, cf_acc, cf_tok), 'cloudflare'
+                    except Exception as e:
+                        print(f'  cloudflare failed for {name}: {e}', flush=True)
                 if raw is None:
+                    if not allow_free:
+                        raise RuntimeError('no image provider worked')
                     raw, how = pollinations(prompt, seed + attempt), 'pollinations'
                 finish(raw).save(path, 'JPEG', quality=90, optimize=True, progressive=True)
                 break
             except Exception as e:
                 raw = None
                 print(f'  try {attempt + 1} failed for {name}: {e}', flush=True)
-                time.sleep(8 * (attempt + 1))
+                time.sleep(25 * (attempt + 1))
         if os.path.exists(path) and raw is not None:
             done.append(name)
             print(f'OK  {name}  ({how})', flush=True)
         else:
             failed.append(name)
-        time.sleep(3)
+        time.sleep(3 if (key or (cf_acc and cf_tok)) else 20)
     sheet()
     print(f'\nDone: {len(done)}  Failed: {len(failed)} {failed}')
     if failed and not done:

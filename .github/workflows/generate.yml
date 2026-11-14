@@ -18,6 +18,7 @@ on:
   push:
     paths:
       - subjects.json
+      - generate.py
 
 permissions:
   contents: write
@@ -43,12 +44,15 @@ jobs:
           SEED: ${{ github.event.inputs.seed }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: python generate.py
       - name: Save the icons in the repository
         run: |
           git config user.name "icons-bot"
           git config user.email "icons-bot@users.noreply.github.com"
-          git add icons preview.jpg
+          git add -A icons
+          [ -f preview.jpg ] && git add preview.jpg
           git diff --cached --quiet || git commit -m "Generate icons"
           git push
       - uses: actions/upload-artifact@v4
